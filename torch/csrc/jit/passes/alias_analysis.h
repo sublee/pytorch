@@ -5,6 +5,7 @@
 
 namespace torch {
 namespace jit {
+class AliasSetTracker;
 
 /**
  * Alias analysis pass.
@@ -27,6 +28,7 @@ namespace jit {
 class AliasDb {
  public:
   explicit AliasDb(std::shared_ptr<Graph> graph);
+  ~AliasDb();
 
   // Does `n` write to any alias sets?
   bool hasWrites(Node* n) const;
@@ -40,9 +42,6 @@ class AliasDb {
   // These nodes are considered not safe to eliminate or mutate under any
   // circumstances.
   bool hasUntrackedEffects(Node* n) const;
-
-  // Get all nodes that write to any alias set inputed/outputed by `n`
-  std::unordered_set<Node*> getWriters(const Node* n) const;
 
   // Get all the values that `n` writes to.
   std::unordered_set<const Value*> getWrites(Node* n) const;
@@ -87,6 +86,9 @@ class AliasDb {
   // Returns nullopt if there are no wildcard nodes
   c10::optional<const Node*> getLastWildcard() const;
 
+  // Get all nodes that write to any alias set inputed/outputed by `n`
+  std::unordered_set<Node*> getWriters(const Node* n) const;
+
   // Does `n` write to a value that may alias one of the graph inputs?
   bool writesToInputAlias(Node* n) const;
 
@@ -102,33 +104,17 @@ class AliasDb {
   void analyzeChunk(Node* node);
   void analyzeBroadcastingChunk(Node* node);
 
-  Symbol getFreshAlias(bool isGraphInput = false);
-  void addAlias(const Value* value, AliasInfo alias);
-
-  void addAlias(const Value* value, Symbol alias);
-  void addAlias(const Value* value, const Value* from);
+  bool addAlias(const Value* value, const Value* from);
   void mapAliases(at::ArrayRef<Value*> to, at::ArrayRef<Value*> from);
   void giveFreshAlias(const Value* value);
 
   bool hasUsesAfter(Symbol alias, const Node* n) const;
-  void buildWildcardIndex(const Block* b);
-  bool hasWildcardImpl(const Node* n) const;
   bool writesTo(Node* n, const Value* v) const;
-
   bool isBeforeSameGraph(const Node* lhs, const Node* rhs) const;
 
   std::shared_ptr<Graph> graph_;
-  Symbol latestSymbol_ = Symbol::fromQualString("alias::0");
-  std::unordered_map<const Value*, AliasInfo> valueToAlias_;
-  std::unordered_map<Symbol, std::unordered_set<const Value*>> aliasToValue_;
-  std::unordered_map<Symbol, std::unordered_set<Node*>> aliasToWrites_;
-  std::unordered_set<const Node*> wildcardNodes_;
-  std::unordered_set<Symbol> graphInputAliases_;
   std::unordered_map<const Graph*, const Node*> subgraphToOwner_;
+  std::unique_ptr<AliasSetTracker> setTracker_;
 };
-
-inline TORCH_API AliasDb AliasAnalysis(std::shared_ptr<Graph> graph) {
-  return AliasDb(std::move(graph));
-}
 } // namespace jit
 } // namespace torch
