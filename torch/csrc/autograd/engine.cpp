@@ -590,15 +590,20 @@ auto Engine::execute(const edge_list& roots,
   if (!outputs.empty()) {
     graph_task.init_to_execute(*graph_root, outputs);
   }
-  ready_queue(-1).push(FunctionTask(&graph_task, std::move(graph_root), InputBuffer(0)));
+
+  auto task = FunctionTask(&graph_task, std::move(graph_root), InputBuffer(0));
 
   // Not a worker
   if (worker_device == NO_DEVICE) {
+    ready_queue(-1).push(std::move(task));
+
     // Wait for all tasks to complete
     graph_task.not_done.wait(lock, [&graph_task]{
       return graph_task.outstanding_tasks.load() == 0;
     });
   } else {
+    ready_queue(worker_device).push(std::move(task));
+
     // Get back to work while we wait for our new graph_task to
     // complete!
     // See Note [Reentrant backwards]
